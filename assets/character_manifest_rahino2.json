@@ -1,0 +1,34 @@
+{
+  "model": "d787d255-0e33-45b6-9a48-35ff4470f5ed",
+  "rig": "e3fc497d-b307-4234-82a5-bd213204ba3d",
+  "animations": {
+    "preset:idle": {
+      "task_id": "2c8d9c6b-2f3d-40ca-9191-4fc271780a23",
+      "files": [
+        "assets/2c8d9c6b-2f3d-40ca-9191-4fc271780a23/model.glb"
+      ]
+    },
+    "preset:walk": {
+      "task_id": "0a98c213-aeb9-477e-b3bb-5224a1761b10",
+      "files": [
+        "assets/0a98c213-aeb9-477e-b3bb-5224a1761b10/model.glb"
+      ]
+    },
+    "preset:run": {
+      "task_id": "c6a2456e-60d2-4e49-a6bd-0592f155bd73",
+      "files": [
+        "assets/c6a2456e-60d2-4e49-a6bd-0592f155bd73/model.glb"
+      ]
+    },
+    "preset:jump": {
+      "task_id": "a926b2be-f654-44f5-9bf1-d3a06fc33411",
+      "files": [
+        "assets/a926b2be-f654-44f5-9bf1-d3a06fc33411/model.glb"
+      ]
+    }
+  },
+  "rig_files": [
+    "assets/e3fc497d-b307-4234-82a5-bd213204ba3d/model.glb",
+    "assets/e3fc497d-b307-4234-82a5-bd213204ba3d/rendered_image.webp"
+  ]
+}

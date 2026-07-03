@@ -47,8 +47,8 @@
 
 <script type="importmap">
 { "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/"
 } }
 </script>
 <script type="module">
@@ -140,9 +140,11 @@ function findFaceRig(root) {
 }
 
 async function init() {
+  // switch manifests with ?m=manifest_rahino1.json
+  const manifestName = new URLSearchParams(location.search).get('m') || 'manifest.json';
   let manifest = { character: 'models/character.glb', animations: {} };
   try {
-    manifest = await (await fetch('models/manifest.json')).json();
+    manifest = await (await fetch('models/' + manifestName)).json();
   } catch { /* fall back to defaults */ }
 
   const gltf = await loader.loadAsync(manifest.character);

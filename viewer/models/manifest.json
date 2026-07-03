@@ -1,9 +1,9 @@
 {
-  "character": "../assets/a674407d-bc57-4450-aa85-59927777152e/model.glb",
+  "character": "../assets/e3fc497d-b307-4234-82a5-bd213204ba3d/model.glb",
   "animations": {
-    "idle": "../assets/c6ef843a-ad5d-46ba-913b-2b43ed3d1f80/model.glb",
-    "walk": "../assets/7ea7be1f-f1da-4026-b44d-7df6bd8497f3/model.glb",
-    "run": "../assets/81274e4f-776f-4fc4-bc10-fbf2674c59f7/model.glb",
-    "jump": "../assets/aaf07dc6-04a6-4a34-8256-7c66f67b59ce/model.glb"
+    "idle": "../assets/2c8d9c6b-2f3d-40ca-9191-4fc271780a23/model.glb",
+    "walk": "../assets/0a98c213-aeb9-477e-b3bb-5224a1761b10/model.glb",
+    "run": "../assets/c6a2456e-60d2-4e49-a6bd-0592f155bd73/model.glb",
+    "jump": "../assets/a926b2be-f654-44f5-9bf1-d3a06fc33411/model.glb"
   }
 }
