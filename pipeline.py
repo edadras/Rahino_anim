@@ -25,7 +25,7 @@ DEFAULT_ANIMATIONS = [
 ]
 
 ASSETS = Path("assets")
-STATE_FILE = ASSETS / "pipeline_state.json"
+STATE_FILE = ASSETS / "pipeline_state.json"  # reassigned per image in main()
 
 
 def load_state() -> dict:
@@ -68,6 +68,13 @@ def main():
         "--no-rig", action="store_true", help="stop after the static model"
     )
     args = parser.parse_args()
+
+    global STATE_FILE
+    stem = Path(args.image).stem
+    STATE_FILE = ASSETS / f"pipeline_state_{stem}.json"
+    # keep the original rahino run attached to its pre-rename state file
+    if stem == "rahino" and not STATE_FILE.is_file() and (ASSETS / "pipeline_state.json").is_file():
+        STATE_FILE = ASSETS / "pipeline_state.json"
 
     client = TripoClient()
     state = load_state()
@@ -113,8 +120,9 @@ def main():
         }
 
     manifest["rig_files"] = rig.get("files", [])
-    (ASSETS / "character_manifest.json").write_text(json.dumps(manifest, indent=2))
-    print("\nAll done. Manifest: assets/character_manifest.json")
+    manifest_path = ASSETS / f"character_manifest_{stem}.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+    print(f"\nAll done. Manifest: {manifest_path}")
     print("Copy the rigged/animated GLBs into viewer/models/ and open the viewer.")
 
 
