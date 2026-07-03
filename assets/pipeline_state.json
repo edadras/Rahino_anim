@@ -13,6 +13,28 @@
     "files": []
   },
   "rig": {
-    "task_id": "a674407d-bc57-4450-aa85-59927777152e"
+    "task_id": "a674407d-bc57-4450-aa85-59927777152e",
+    "done": true,
+    "files": [
+      "assets/a674407d-bc57-4450-aa85-59927777152e/model.glb",
+      "assets/a674407d-bc57-4450-aa85-59927777152e/rendered_image.webp"
+    ]
+  },
+  "anim:preset:idle": {
+    "task_id": "c6ef843a-ad5d-46ba-913b-2b43ed3d1f80",
+    "done": true,
+    "files": [
+      "assets/c6ef843a-ad5d-46ba-913b-2b43ed3d1f80/model.glb"
+    ]
+  },
+  "anim:preset:walk": {
+    "task_id": "7ea7be1f-f1da-4026-b44d-7df6bd8497f3",
+    "done": true,
+    "files": [
+      "assets/7ea7be1f-f1da-4026-b44d-7df6bd8497f3/model.glb"
+    ]
+  },
+  "anim:preset:run": {
+    "task_id": "81274e4f-776f-4fc4-bc10-fbf2674c59f7"
   }
 }
