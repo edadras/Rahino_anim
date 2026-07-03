@@ -29,7 +29,34 @@ python generate.py download <task_id>           # دانلود خروجی‌ها
 خروجی‌ها در `outputs/<task_id>/` ذخیره می‌شوند و همه‌ی تسک‌ها در داشبورد
 اکانت Tripo شما هم قابل مشاهده‌اند (و قابل import به Studio).
 
+## پایپ‌لاین کاراکتر زنده
+
+کل زنجیره (عکس → مدل → ریگ → چند انیمیشن) با یک دستور:
+
+```bash
+python pipeline.py assets/rahino.png
+```
+
+خروجی‌ها در `assets/` ذخیره می‌شوند و وضعیت هر مرحله در
+`assets/pipeline_state.json` می‌ماند (اجرای دوباره، مراحل تمام‌شده را
+دوباره نمی‌سازد و کردیت اضافه مصرف نمی‌کند).
+
+بعد فایل‌های GLB را در `viewer/models/` کپی کنید (نام‌ها مطابق
+`viewer/models/manifest.json`) و نمایشگر را باز کنید:
+
+```bash
+cd viewer && python -m http.server 8000
+# سپس http://localhost:8000
+```
+
+نمایشگر (three.js) امکانات زیر را دارد:
+- سوییچ نرم بین انیمیشن‌ها (idle/walk/run/jump/…)
+- لیپ‌سینک با فایل صوتی یا میکروفون (دامنه‌ی صدا → استخوان فک یا morph target)
+- چرخش/زوم دوربین
+
 ## ساختار
 
 - `tripo_client.py` — کلاینت سبک برای Open API (ساخت تسک، polling، دانلود)
-- `generate.py` — رابط خط فرمان
+- `generate.py` — رابط خط فرمان تک‌مرحله‌ای
+- `pipeline.py` — زنجیره‌ی کامل کاراکتر (عکس تا انیمیشن) با resume
+- `viewer/` — نمایشگر وب کاراکتر زنده با لیپ‌سینک

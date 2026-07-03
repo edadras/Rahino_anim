@@ -1,0 +1,9 @@
+{
+  "character": "models/character.glb",
+  "animations": {
+    "idle": "models/idle.glb",
+    "walk": "models/walk.glb",
+    "run": "models/run.glb",
+    "jump": "models/jump.glb"
+  }
+}

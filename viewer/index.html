@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rahino — کاراکتر زنده</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: #14151a; color: #eee; overflow: hidden; }
+  #scene { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; top: 12px; right: 12px; width: 260px; padding: 14px;
+    background: rgba(24,25,32,.92); border: 1px solid #333; border-radius: 12px;
+    display: flex; flex-direction: column; gap: 10px; z-index: 10;
+  }
+  #panel h1 { font-size: 15px; }
+  #status { font-size: 12px; color: #9aa; min-height: 16px; }
+  #clips { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    background: #2b2d3a; color: #eee; border: 1px solid #444; border-radius: 8px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #3a3d50; }
+  button.active { background: #4f6ef7; border-color: #4f6ef7; }
+  label.file {
+    display: block; text-align: center; background: #2b2d3a; border: 1px dashed #555;
+    border-radius: 8px; padding: 8px; font-size: 13px; cursor: pointer;
+  }
+  input[type=file] { display: none; }
+  #talkMeter { height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+  #talkMeter i { display: block; height: 100%; width: 0; background: #4f6ef7; }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="panel">
+  <h1>🦏 Rahino — کاراکتر زنده</h1>
+  <div id="status">در حال بارگذاری مدل…</div>
+  <div id="clips"></div>
+  <label class="file">🎵 فایل صدا برای لیپ‌سینک
+    <input id="audioFile" type="file" accept="audio/*">
+  </label>
+  <button id="micBtn">🎤 لیپ‌سینک با میکروفون</button>
+  <div id="talkMeter"><i></i></div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const statusEl = document.getElementById('status');
+const clipsEl = document.getElementById('clips');
+const meterEl = document.querySelector('#talkMeter i');
+
+// ---------- scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.getElementById('scene').appendChild(renderer.domElement);
+
+const sceneGraph = new THREE.Scene();
+sceneGraph.background = new THREE.Color(0x14151a);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(0, 1.2, 3.2);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.9, 0);
+
+sceneGraph.add(new THREE.HemisphereLight(0xffffff, 0x404060, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(3, 6, 4);
+sceneGraph.add(sun);
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(3, 48),
+  new THREE.MeshStandardMaterial({ color: 0x1e2028, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+sceneGraph.add(ground);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- character & animations ----------
+const loader = new GLTFLoader();
+let mixer = null, model = null, activeAction = null;
+const actions = new Map();
+let jawBone = null, headBone = null;
+const mouthMorphs = []; // { mesh, index }
+
+function registerClips(clips, prefix = '') {
+  for (const clip of clips) {
+    const name = prefix || clip.name || `clip${actions.size}`;
+    if (actions.has(name)) continue;
+    const action = mixer.clipAction(clip, model);
+    actions.set(name, action);
+    const btn = document.createElement('button');
+    btn.textContent = name.replace(/^preset:/, '');
+    btn.onclick = () => play(name, btn);
+    clipsEl.appendChild(btn);
+  }
+}
+
+function play(name, btn) {
+  const next = actions.get(name);
+  if (!next) return;
+  if (activeAction && activeAction !== next) {
+    next.reset().play();
+    activeAction.crossFadeTo(next, 0.35, true);
+  } else {
+    next.reset().play();
+  }
+  activeAction = next;
+  clipsEl.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+}
+
+function findFaceRig(root) {
+  root.traverse(obj => {
+    if (obj.isBone) {
+      const n = obj.name.toLowerCase();
+      if (!jawBone && /jaw|mouth|chin/.test(n)) jawBone = obj;
+      if (!headBone && /head/.test(n)) headBone = obj;
+    }
+    if (obj.isMesh && obj.morphTargetDictionary) {
+      for (const [key, idx] of Object.entries(obj.morphTargetDictionary)) {
+        if (/mouth|jaw|aa|open|viseme/i.test(key)) mouthMorphs.push({ mesh: obj, index: idx });
+      }
+    }
+  });
+}
+
+async function init() {
+  let manifest = { character: 'models/character.glb', animations: {} };
+  try {
+    manifest = await (await fetch('models/manifest.json')).json();
+  } catch { /* fall back to defaults */ }
+
+  const gltf = await loader.loadAsync(manifest.character);
+  model = gltf.scene;
+  sceneGraph.add(model);
+  mixer = new THREE.AnimationMixer(model);
+  findFaceRig(model);
+  registerClips(gltf.animations);
+
+  for (const [name, url] of Object.entries(manifest.animations || {})) {
+    try {
+      const animGltf = await loader.loadAsync(url);
+      registerClips(animGltf.animations, name);
+    } catch (e) { console.warn('animation failed:', name, e); }
+  }
+
+  statusEl.textContent = actions.size
+    ? `آماده — ${actions.size} انیمیشن` : 'آماده (مدل بدون انیمیشن)';
+  const first = clipsEl.querySelector('button');
+  if (first) first.click();
+}
+init().catch(err => { statusEl.textContent = 'خطا در بارگذاری مدل: ' + err.message; });
+
+// ---------- lip-sync (amplitude -> jaw/morph) ----------
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const analyser = audioCtx.createAnalyser();
+analyser.fftSize = 512;
+analyser.connect(audioCtx.destination);
+const timeData = new Uint8Array(analyser.fftSize);
+let talking = false;
+
+function attachSource(node) {
+  node.connect(analyser);
+  talking = true;
+}
+
+document.getElementById('audioFile').onchange = async (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  await audioCtx.resume();
+  const buf = await audioCtx.decodeAudioData(await file.arrayBuffer());
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  attachSource(src);
+  src.onended = () => { talking = false; };
+  src.start();
+  statusEl.textContent = 'در حال پخش و لیپ‌سینک…';
+};
+
+document.getElementById('micBtn').onclick = async () => {
+  await audioCtx.resume();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const src = audioCtx.createMediaStreamSource(stream);
+  src.connect(analyser); // do not route mic to speakers
+  talking = true;
+  statusEl.textContent = 'لیپ‌سینک زنده با میکروفون فعال شد';
+};
+
+function mouthAmount() {
+  if (!talking) return 0;
+  analyser.getByteTimeDomainData(timeData);
+  let sum = 0;
+  for (const v of timeData) { const d = (v - 128) / 128; sum += d * d; }
+  const rms = Math.sqrt(sum / timeData.length);
+  return Math.min(1, rms * 9);
+}
+
+// ---------- render loop ----------
+const clock = new THREE.Clock();
+let smooth = 0;
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = clock.getDelta();
+  if (mixer) mixer.update(dt);
+
+  const amt = mouthAmount();
+  smooth += (amt - smooth) * 0.35;
+  meterEl.style.width = (smooth * 100) + '%';
+  if (mouthMorphs.length) {
+    for (const { mesh, index } of mouthMorphs) mesh.morphTargetInfluences[index] = smooth;
+  } else if (jawBone) {
+    jawBone.rotation.x = smooth * 0.35;
+  } else if (headBone) {
+    headBone.rotation.x = smooth * 0.06; // subtle fallback nod
+  }
+
+  controls.update();
+  renderer.render(sceneGraph, camera);
+}
+tick();
+</script>
+</body>
+</html>
