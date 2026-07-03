@@ -223,6 +223,7 @@ function updatePuppet(dt) {
 const gestureButtons = new Map();
 const gesturesEl = document.getElementById('gestures');
 for (const name of Object.keys(GESTURES)) {
+  if (name.startsWith('_')) continue; // hidden (auto) gestures get no button
   const btn = document.createElement('button');
   btn.textContent = name;
   btn.onclick = () => doGesture(name);
@@ -230,8 +231,185 @@ for (const name of Object.keys(GESTURES)) {
   gesturesEl.appendChild(btn);
 }
 
-// console / external API: rahino.do('بای‌بای'), rahino.list()
-window.rahino = { do: doGesture, list: () => Object.keys(GESTURES), gestures: GESTURES, bones, camera, controls };
+// ---------- runtime facial morphs ----------
+// The Tripo mesh ships without blendshapes, so we build two morph targets
+// from the geometry itself: mouth-open (lower lip/chin drops) and blink
+// (eye regions squash shut). Region centres were calibrated for the
+// rahino2 model; they sit in bind-pose model space.
+const MORPH = { mouth: -1, blink: -1, mesh: null };
+
+function buildFacialMorphs(mesh) {
+  const g = mesh.geometry;
+  const pos = g.attributes.position;
+  const uv = g.attributes.uv;
+  const n = pos.count;
+  const mouthD = new Float32Array(n * 3);
+  const blinkD = new Float32Array(n * 3);
+
+  // Locate the face by texture colour: the irises are the only dark-blue
+  // texels on the head, the mouth interior the only red-brown ones.
+  const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  const img = mat.map && mat.map.image;
+  if (!img || !uv) { console.warn('no texture/uv; facial morphs skipped'); return; }
+  const cv = document.createElement('canvas');
+  cv.width = img.width; cv.height = img.height;
+  const c2 = cv.getContext('2d', { willReadFrequently: true });
+  c2.drawImage(img, 0, 0);
+  const px = c2.getImageData(0, 0, cv.width, cv.height).data;
+
+  const eyeIdx = [], mouthIdx = [];
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    if (x < 0.05 || y < 0.55) continue; // head front only
+    const tu = Math.min(cv.width - 1, Math.max(0, Math.round(uv.getX(i) * (cv.width - 1))));
+    const tv = Math.min(cv.height - 1, Math.max(0, Math.round(uv.getY(i) * (cv.height - 1))));
+    const k = (tv * cv.width + tu) * 4;
+    const r = px[k], gr = px[k + 1], b = px[k + 2];
+    if (y > 0.72 && b > 60 && b > r * 1.2 && b > gr * 1.2) eyeIdx.push(i);           // iris blue
+    else if (y > 0.6 && y < 0.78 && r > 80 && r > gr * 1.45 && r > b * 1.45) mouthIdx.push(i); // mouth interior
+  }
+
+  const centroid = idx => {
+    const c = [0, 0, 0];
+    for (const i of idx) { c[0] += pos.getX(i); c[1] += pos.getY(i); c[2] += pos.getZ(i); }
+    return c.map(v => v / (idx.length || 1));
+  };
+
+  // split iris vertices into the two eyes by z against their overall midline
+  const allEyesC = centroid(eyeIdx);
+  const eyeL = eyeIdx.filter(i => pos.getZ(i) >= allEyesC[2]);
+  const eyeR = eyeIdx.filter(i => pos.getZ(i) < allEyesC[2]);
+  const EYES = [eyeL, eyeR].filter(a => a.length > 10).map(idx => {
+    const c = centroid(idx);
+    let r2 = 0;
+    for (const i of idx) {
+      const dx = pos.getX(i) - c[0], dy = pos.getY(i) - c[1], dz = pos.getZ(i) - c[2];
+      r2 = Math.max(r2, dx * dx + dy * dy + dz * dz);
+    }
+    const r = Math.min(0.09, Math.max(0.045, Math.sqrt(r2) * 1.45)); // iris -> whole eye
+    return { x: c[0], y: c[1], z: c[2], r };
+  });
+
+  const mc = centroid(mouthIdx);
+  let lipY = 0, mrz = 0;
+  for (const i of mouthIdx) {
+    lipY = Math.max(lipY, pos.getY(i));
+    mrz = Math.max(mrz, Math.abs(pos.getZ(i) - mc[2]));
+  }
+  const M = mouthIdx.length > 20
+    ? { x: mc[0], y: mc[1], z: mc[2], rx: 0.11, ry: 0.09, rz: Math.min(0.13, Math.max(0.08, mrz * 1.7)), lipY: lipY + 0.005 }
+    : null;
+  console.log('face detect:', { eyes: EYES, mouth: M, eyeVerts: eyeIdx.length, mouthVerts: mouthIdx.length });
+
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (M && x > 0.05 && y < M.lipY) { // jaw region under the upper lip
+      const dx = (x - M.x) / M.rx, dy = (y - M.y) / M.ry, dz = (z - M.z) / M.rz;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < 1) {
+        const w = Math.pow(1 - d, 1.2);
+        // hinge: the further below the lip line, the more it drops
+        const hinge = Math.min(1, (M.lipY - y) / 0.07);
+        mouthD[i * 3 + 1] = -0.06 * w * hinge;
+        mouthD[i * 3] = -0.01 * w * hinge; // tuck slightly back
+      }
+    }
+    for (const E of EYES) {
+      const dx = (x - E.x) / (E.r * 1.1), dy = (y - E.y) / E.r, dz = (z - E.z) / (E.r * 1.1);
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < 1) {
+        const w = Math.pow(1 - d, 0.8);
+        const lidY = E.y - 0.012; // shut line sits just under the eye centre
+        blinkD[i * 3 + 1] += (lidY - y) * 0.98 * w;
+        blinkD[i * 3] += -0.006 * w; // sink in a touch so the "lid" reads closed
+      }
+    }
+  }
+  g.morphTargetsRelative = true;
+  g.morphAttributes.position = [
+    new THREE.Float32BufferAttribute(mouthD, 3),
+    new THREE.Float32BufferAttribute(blinkD, 3),
+  ];
+  mesh.updateMorphTargets();
+  MORPH.mouth = 0; MORPH.blink = 1; MORPH.mesh = mesh;
+  for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) m.needsUpdate = true;
+}
+
+function setMorph(idx, v) {
+  if (MORPH.mesh && idx >= 0) MORPH.mesh.morphTargetInfluences[idx] = v;
+}
+
+// ---------- auto blink ----------
+let blinkWait = 1.5 + Math.random() * 3, blinkPhase = -1, autoBlink = true;
+function triggerBlink() { if (blinkPhase < 0) blinkPhase = 0; }
+function updateBlink(dt) {
+  if (blinkPhase < 0) {
+    if (!autoBlink) return;
+    blinkWait -= dt;
+    if (blinkWait <= 0) blinkPhase = 0;
+    return;
+  }
+  blinkPhase += dt;
+  const closeT = 0.09, openT = 0.13;
+  const v = blinkPhase < closeT ? blinkPhase / closeT
+          : Math.max(0, 1 - (blinkPhase - closeT) / openT);
+  setMorph(MORPH.blink, v);
+  if (blinkPhase > closeT + openT) {
+    blinkPhase = -1;
+    blinkWait = 1.5 + Math.random() * 3.5;
+  }
+}
+
+// ---------- talking body language ----------
+// small hidden gestures fired randomly while the character is speaking
+Object.assign(GESTURES, {
+  '_talk_nod':   { dur: 1.1, tracks: [{ bone: 'Head', axis: 'z', amp: 0.12, cycles: 1 }] },
+  '_talk_tilt':  { dur: 1.5, tracks: [{ bone: 'Head', axis: 'x', amp: 0.12, cycles: 1 }] },
+  '_talk_handR': { dur: 1.6, tracks: [
+                    { bone: 'R_Upperarm', axis: 'x', amp: -0.45 },
+                    { bone: 'R_Forearm',  axis: 'z', amp: 0.5, cycles: 1 }] },
+  '_talk_handL': { dur: 1.6, tracks: [
+                    { bone: 'L_Upperarm', axis: 'x', amp: 0.45 },
+                    { bone: 'L_Forearm',  axis: 'z', amp: 0.5, cycles: 1 }] },
+  '_talk_both':  { dur: 1.4, tracks: [
+                    { bone: 'R_Forearm', axis: 'z', amp: 0.45 },
+                    { bone: 'L_Forearm', axis: 'z', amp: 0.45 }] },
+});
+const TALK_GESTURES = ['_talk_nod', '_talk_tilt', '_talk_handR', '_talk_handL', '_talk_both'];
+let talkGestureWait = 1.2, autoTalkGestures = true;
+function updateTalkGestures(dt, level) {
+  if (!autoTalkGestures || level < 0.06) return;
+  talkGestureWait -= dt;
+  if (talkGestureWait <= 0) {
+    doGesture(TALK_GESTURES[Math.floor(Math.random() * TALK_GESTURES.length)]);
+    talkGestureWait = 1.4 + Math.random() * 2.2;
+  }
+}
+
+// console / external API: rahino.do('بای‌بای'), rahino.face.mouth(0..1), rahino.face.blink()
+window.rahino = {
+  do: doGesture, list: () => Object.keys(GESTURES).filter(k => !k.startsWith('_')),
+  gestures: GESTURES, bones, camera, controls,
+  stopAnims: () => { // freeze in bind pose (for debugging/calibration)
+    if (mixer) mixer.stopAllAction();
+    activeGestures.clear();
+    if (MORPH.mesh) MORPH.mesh.skeleton.pose();
+  },
+  face: {
+    mouth: v => setMorph(MORPH.mouth, v),
+    blink: triggerBlink,
+    autoBlink: on => { autoBlink = on; },
+    autoTalkGestures: on => { autoTalkGestures = on; },
+  },
+};
+
+// face test buttons
+{
+  const blinkBtn = document.createElement('button');
+  blinkBtn.textContent = 'پلک بزن';
+  blinkBtn.onclick = triggerBlink;
+  gesturesEl.appendChild(blinkBtn);
+}
 
 async function init() {
   // switch manifests with ?m=manifest_rahino1.json
@@ -246,6 +424,7 @@ async function init() {
   sceneGraph.add(model);
   mixer = new THREE.AnimationMixer(model);
   findFaceRig(model);
+  model.traverse(o => { if (o.isSkinnedMesh && !MORPH.mesh) buildFacialMorphs(o); });
   registerClips(gltf.animations);
 
   for (const [name, url] of Object.entries(manifest.animations || {})) {
@@ -316,15 +495,19 @@ function tick() {
   updatePuppet(dt);
 
   const amt = mouthAmount();
-  smooth += (amt - smooth) * 0.35;
+  // fast attack, slower release reads better as speech
+  smooth += (amt - smooth) * (amt > smooth ? 0.6 : 0.18);
   meterEl.style.width = (smooth * 100) + '%';
-  if (mouthMorphs.length) {
+  if (MORPH.mouth >= 0) {
+    // only drive from audio while it plays, so rahino.face.mouth() stays usable
+    if (talking || smooth > 0.003) setMorph(MORPH.mouth, Math.min(1, smooth * 1.6));
+  } else if (mouthMorphs.length) {
     for (const { mesh, index } of mouthMorphs) mesh.morphTargetInfluences[index] = smooth;
   } else if (jawBone) {
     jawBone.rotation.x = smooth * 0.35;
-  } else if (headBone) {
-    headBone.rotation.x = smooth * 0.06; // subtle fallback nod
   }
+  updateBlink(dt);
+  updateTalkGestures(dt, smooth);
 
   controls.update();
   renderer.render(sceneGraph, camera);
