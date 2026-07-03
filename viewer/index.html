@@ -16,7 +16,9 @@
   }
   #panel h1 { font-size: 15px; }
   #status { font-size: 12px; color: #9aa; min-height: 16px; }
-  #clips { display: flex; flex-wrap: wrap; gap: 6px; }
+  #clips, #gestures { display: flex; flex-wrap: wrap; gap: 6px; }
+  #gestures { border-top: 1px solid #333; padding-top: 10px; }
+  #gestures button.hold { background: #7a4ff7; border-color: #7a4ff7; }
   button {
     background: #2b2d3a; color: #eee; border: 1px solid #444; border-radius: 8px;
     padding: 7px 12px; font-size: 13px; cursor: pointer;
@@ -38,6 +40,7 @@
   <h1>🦏 Rahino — کاراکتر زنده</h1>
   <div id="status">در حال بارگذاری مدل…</div>
   <div id="clips"></div>
+  <div id="gestures"></div>
   <label class="file">🎵 فایل صدا برای لیپ‌سینک
     <input id="audioFile" type="file" accept="audio/*">
   </label>
@@ -70,7 +73,7 @@ document.getElementById('scene').appendChild(renderer.domElement);
 const sceneGraph = new THREE.Scene();
 sceneGraph.background = new THREE.Color(0x14151a);
 const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 100);
-camera.position.set(0, 1.2, 3.2);
+camera.position.set(2.7, 1.2, 1.5); // three-quarter front view (model faces +X)
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0.9, 0);
 
@@ -124,12 +127,15 @@ function play(name, btn) {
   clipsEl.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
 }
 
+const bones = {};
+
 function findFaceRig(root) {
   root.traverse(obj => {
     if (obj.isBone) {
+      bones[obj.name] = obj;
       const n = obj.name.toLowerCase();
       if (!jawBone && /jaw|mouth|chin/.test(n)) jawBone = obj;
-      if (!headBone && /head/.test(n)) headBone = obj;
+      if (!headBone && /^head/.test(n)) headBone = obj;
     }
     if (obj.isMesh && obj.morphTargetDictionary) {
       for (const [key, idx] of Object.entries(obj.morphTargetDictionary)) {
@@ -138,6 +144,94 @@ function findFaceRig(root) {
     }
   });
 }
+
+// ---------- procedural puppet (no pre-made animations) ----------
+// A gesture is a set of bone-rotation tracks applied ON TOP of whatever
+// animation is playing, every frame after the mixer updates.
+//   one-shot: value = amp * sin(pi*t/dur)                 (go and come back)
+//   cycles>0: value = amp * sin(2pi*cycles*t/dur) * fade  (oscillate, fade out)
+//   hold:     value eases to amp and stays until toggled off
+// axes are WORLD axes; the character faces +X in rest pose, so:
+//   z: pitch (nod/bow, negative = forward), y: yaw (turn, positive = its left),
+//   x: lateral arm lift (negative lifts the right arm outward)
+const GESTURES = {
+  'سر تکان بده':   { tracks: [{ bone: 'Head', axis: 'z', amp: -0.4, cycles: 2 }], dur: 1.6 },
+  'نه با سر':      { tracks: [{ bone: 'Head', axis: 'y', amp: 0.5, cycles: 2 }], dur: 1.6 },
+  'بای‌بای':       { dur: 2.8, tracks: [
+                      { bone: 'R_Clavicle', axis: 'x', amp: -0.35 },
+                      { bone: 'R_Upperarm', axis: 'x', amp: -2.0 },
+                      { bone: 'R_Forearm',  axis: 'x', amp: -0.45, cycles: 4 }] },
+  'تعظیم':         { dur: 2.4, tracks: [
+                      { bone: 'Spine01', axis: 'z', amp: 0.4 },
+                      { bone: 'Spine02', axis: 'z', amp: 0.25 },
+                      { bone: 'Head',    axis: 'z', amp: 0.15 }] },
+  'دست راست بالا': { hold: true, tracks: [
+                      { bone: 'R_Clavicle', axis: 'x', amp: -0.35 },
+                      { bone: 'R_Upperarm', axis: 'x', amp: -2.1 }] },
+  'دست چپ بالا':   { hold: true, tracks: [
+                      { bone: 'L_Clavicle', axis: 'x', amp: 0.35 },
+                      { bone: 'L_Upperarm', axis: 'x', amp: 2.1 }] },
+  'نگاه به چپ':    { hold: true, tracks: [{ bone: 'Head', axis: 'y', amp: 0.6 }] },
+  'نگاه به راست':  { hold: true, tracks: [{ bone: 'Head', axis: 'y', amp: -0.6 }] },
+};
+
+const activeGestures = new Map(); // name -> { t } or { level, on } for holds
+const AXES = { x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1) };
+const _q = new THREE.Quaternion(), _qw = new THREE.Quaternion(), _axis = new THREE.Vector3();
+
+function doGesture(name) {
+  const g = GESTURES[name];
+  if (!g) return console.warn('unknown gesture', name);
+  if (g.hold) {
+    const cur = activeGestures.get(name);
+    if (cur) cur.on = !cur.on;
+    else activeGestures.set(name, { level: 0, on: true });
+  } else {
+    activeGestures.set(name, { t: 0 });
+  }
+  const btn = gestureButtons.get(name);
+  if (btn && g.hold) btn.classList.toggle('hold', activeGestures.get(name).on);
+}
+
+function updatePuppet(dt) {
+  for (const [name, s] of activeGestures) {
+    const g = GESTURES[name];
+    let env; // 0..1 envelope for this frame
+    if (g.hold) {
+      s.level += ((s.on ? 1 : 0) - s.level) * Math.min(1, dt * 6);
+      env = s.level;
+      if (!s.on && env < 0.005) { activeGestures.delete(name); continue; }
+    } else {
+      s.t += dt;
+      if (s.t >= g.dur) { activeGestures.delete(name); continue; }
+      env = Math.sin(Math.PI * s.t / g.dur);
+    }
+    for (const tr of g.tracks) {
+      const bone = bones[tr.bone];
+      if (!bone) continue;
+      let v = tr.amp * env;
+      if (tr.cycles) v = tr.amp * Math.sin(2 * Math.PI * tr.cycles * (s.t ?? 0) / g.dur) * env;
+      // convert the world axis into this bone's local frame, then rotate
+      bone.getWorldQuaternion(_qw).invert();
+      _axis.copy(AXES[tr.axis]).applyQuaternion(_qw).normalize();
+      _q.setFromAxisAngle(_axis, v);
+      bone.quaternion.multiply(_q);
+    }
+  }
+}
+
+const gestureButtons = new Map();
+const gesturesEl = document.getElementById('gestures');
+for (const name of Object.keys(GESTURES)) {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.onclick = () => doGesture(name);
+  gestureButtons.set(name, btn);
+  gesturesEl.appendChild(btn);
+}
+
+// console / external API: rahino.do('بای‌بای'), rahino.list()
+window.rahino = { do: doGesture, list: () => Object.keys(GESTURES), gestures: GESTURES, bones, camera, controls };
 
 async function init() {
   // switch manifests with ?m=manifest_rahino1.json
@@ -219,6 +313,7 @@ function tick() {
   requestAnimationFrame(tick);
   const dt = clock.getDelta();
   if (mixer) mixer.update(dt);
+  updatePuppet(dt);
 
   const amt = mouthAmount();
   smooth += (amt - smooth) * 0.35;
