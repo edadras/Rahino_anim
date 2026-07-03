@@ -35,6 +35,17 @@
     ]
   },
   "anim:preset:run": {
-    "task_id": "81274e4f-776f-4fc4-bc10-fbf2674c59f7"
+    "task_id": "81274e4f-776f-4fc4-bc10-fbf2674c59f7",
+    "done": true,
+    "files": [
+      "assets/81274e4f-776f-4fc4-bc10-fbf2674c59f7/model.glb"
+    ]
+  },
+  "anim:preset:jump": {
+    "task_id": "aaf07dc6-04a6-4a34-8256-7c66f67b59ce",
+    "done": true,
+    "files": [
+      "assets/aaf07dc6-04a6-4a34-8256-7c66f67b59ce/model.glb"
+    ]
   }
 }

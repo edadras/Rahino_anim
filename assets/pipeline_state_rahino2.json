@@ -1,5 +1,26 @@
 {
   "model": {
-    "task_id": "d787d255-0e33-45b6-9a48-35ff4470f5ed"
+    "task_id": "d787d255-0e33-45b6-9a48-35ff4470f5ed",
+    "done": true,
+    "files": [
+      "assets/d787d255-0e33-45b6-9a48-35ff4470f5ed/pbr_model.glb",
+      "assets/d787d255-0e33-45b6-9a48-35ff4470f5ed/rendered_image.webp"
+    ]
+  },
+  "prerigcheck": {
+    "task_id": "a4729bb9-1817-43fa-9f18-69dd09489ac8",
+    "done": true,
+    "files": []
+  },
+  "rig": {
+    "task_id": "e3fc497d-b307-4234-82a5-bd213204ba3d",
+    "done": true,
+    "files": [
+      "assets/e3fc497d-b307-4234-82a5-bd213204ba3d/model.glb",
+      "assets/e3fc497d-b307-4234-82a5-bd213204ba3d/rendered_image.webp"
+    ]
+  },
+  "anim:preset:idle": {
+    "task_id": "2c8d9c6b-2f3d-40ca-9191-4fc271780a23"
   }
 }

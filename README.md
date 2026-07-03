@@ -41,12 +41,12 @@ python pipeline.py assets/rahino.png
 `assets/pipeline_state.json` می‌ماند (اجرای دوباره، مراحل تمام‌شده را
 دوباره نمی‌سازد و کردیت اضافه مصرف نمی‌کند).
 
-بعد فایل‌های GLB را در `viewer/models/` کپی کنید (نام‌ها مطابق
-`viewer/models/manifest.json`) و نمایشگر را باز کنید:
+مسیر فایل‌های GLB در `viewer/models/manifest.json` تنظیم می‌شود
+(می‌تواند مستقیم به `assets/…` اشاره کند). نمایشگر را از ریشه‌ی ریپو serve کنید:
 
 ```bash
-cd viewer && python -m http.server 8000
-# سپس http://localhost:8000
+python -m http.server 8000
+# سپس http://localhost:8000/viewer/
 ```
 
 نمایشگر (three.js) امکانات زیر را دارد:
